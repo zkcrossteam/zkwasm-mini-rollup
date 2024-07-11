@@ -4047,14 +4047,11 @@ dependencies = [
  "ff 0.12.1",
  "halo2curves",
  "hex",
- "js-sys",
  "lazy_static",
  "num-bigint 0.4.5",
  "poseidon 0.2.0 (git+https://github.com/DelphinusLab/poseidon?branch=no-std)",
  "serde",
  "serde_json",
- "wasm-bindgen",
- "web-sys",
 ]
 
 [[package]]

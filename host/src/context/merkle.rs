@@ -1,11 +1,63 @@
 use bytes_helper::Reduce;
 use bytes_helper::ReduceRule;
-use wasm_bindgen::prelude::wasm_bindgen;
+use std::os::raw::c_uchar;
 
-#[wasm_bindgen(raw_module = "./rpcbind.js")]
+#[link(wasm_import_module = "zkc_node_host")]
 extern "C" {
-    pub fn update_leaf(root: Vec<u8>, index: u64, leafdata: Vec<u8>) -> js_sys::Array; // root and leaf data is [u8; 32]
-    pub fn get_leaf(root: Vec<u8>, index: u64) -> js_sys::Array; // result needs to be [u8; 32]
+    pub fn host_update_leaf(
+        root_ptr: *const c_uchar,
+        root_len: usize,
+        index: u64,
+        leafdata_ptr: *const c_uchar,
+        leafdata_len: usize,
+        output_ptr: *mut c_uchar,
+        output_len: usize,
+    );
+    pub fn host_get_leaf(
+        root_ptr: *const c_uchar,
+        root_len: usize,
+        index: u64,
+        output_ptr: *mut c_uchar,
+        output_len: usize,
+    );
+}
+
+// root and leaf data is [u8; 32]
+fn update_leaf(root: Vec<u8>, index: u64, leafdata: Vec<u8>) -> Vec<u8> {
+    let root_ptr = root.as_ptr() as *const c_uchar;
+    let leafdata_ptr = leafdata.as_ptr() as *const c_uchar;
+
+    let mut output = vec![0u8; 32];
+
+    unsafe {
+        let output_ptr = output.as_mut_ptr() as *mut c_uchar;
+
+        host_update_leaf(
+            root_ptr,
+            root.len(),
+            index,
+            leafdata_ptr,
+            leafdata.len(),
+            output_ptr,
+            32,
+        );
+
+        output
+    }
+}
+
+// result needs to be [u8; 32]
+fn get_leaf(root: Vec<u8>, index: u64) -> Vec<u8> {
+    let root_ptr = root.as_ptr() as *const c_uchar;
+
+    let mut output = vec![0u8; 32];
+    let output_ptr = output.as_mut_ptr() as *mut c_uchar;
+
+    unsafe {
+        host_get_leaf(root_ptr, root.len(), index, output_ptr, 32);
+
+        output
+    }
 }
 
 pub const MERKLE_TREE_HEIGHT: usize = 32;
@@ -46,7 +98,11 @@ impl MerkleContext {
     pub fn merkle_setroot(&mut self, v: u64) {
         self.set_root.reduce(v);
         if self.set_root.cursor == 0 {
-            self.root = self.set_root.rules[0].bytes_value().unwrap().try_into().unwrap()
+            self.root = self.set_root.rules[0]
+                .bytes_value()
+                .unwrap()
+                .try_into()
+                .unwrap()
         }
     }
 
@@ -80,11 +136,8 @@ impl MerkleContext {
             let index = (address as u64) + (1u64 << MERKLE_TREE_HEIGHT) - 1;
             let hash = self.set.rules[0].bytes_value().unwrap();
             self.root = update_leaf(self.root.to_vec(), index, hash)
-                    .into_iter()
-                    .map(|v| v.as_f64().unwrap() as u8)
-                    .collect::<Vec<_>>()
-                    .try_into()
-                    .unwrap();
+                .try_into()
+                .unwrap();
         }
     }
 
@@ -92,10 +145,7 @@ impl MerkleContext {
         let address = self.address.rules[0].u64_value().unwrap() as u32;
         let index = (address as u64) + (1u64 << MERKLE_TREE_HEIGHT) - 1;
         if self.data_cursor == 0 {
-            let leaf = get_leaf(self.root.to_vec(), index)
-                .into_iter()
-                .map(|v| v.as_f64().unwrap() as u8)
-                .collect::<Vec<_>>();
+            let leaf = get_leaf(self.root.to_vec(), index);
             let values = leaf
                 .chunks(8)
                 .into_iter()
