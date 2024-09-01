@@ -1,8 +1,8 @@
 use super::babyjubjub_fq_to_limbs;
 use super::fetch_g1;
 use super::LIMBNB;
-use num_bigint::BigUint;
 use crate::jubjub;
+use num_bigint::BigUint;
 
 fn fetch_biguint(_limbs: &Vec<u64>) -> BigUint {
     BigUint::from_bytes_le(

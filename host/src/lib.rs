@@ -1,20 +1,28 @@
 use context::{
-    datacache::CacheContext, jubjub::sum::BabyJubjubSumContext, merkle::MerkleContext,
-    poseidon::PoseidonContext,
+    context::Context, datacache::CacheContext, jubjub::sum::BabyJubjubSumContext,
+    merkle::MerkleContext, poseidon::PoseidonContext,
 };
-use std::sync::Mutex;
+use std::mem;
+use std::os::raw::c_uchar;
+use std::sync::{Mutex, OnceLock};
 
 pub mod alloc;
 pub mod context;
 pub mod jubjub;
-pub mod poseidon;
 pub mod log;
+pub mod poseidon;
 
+pub static CONTEXT: OnceLock<Mutex<Context>> = OnceLock::new();
 lazy_static::lazy_static! {
     pub static ref DATACACHE_CONTEXT: Mutex<CacheContext> = Mutex::new(CacheContext::new());
     pub static ref MERKLE_CONTEXT: Mutex<MerkleContext> = Mutex::new(MerkleContext::new(0));
     pub static ref POSEIDON_CONTEXT: Mutex<PoseidonContext> = Mutex::new(PoseidonContext::default(0));
     pub static ref JUBJUB_CONTEXT: Mutex<BabyJubjubSumContext> = Mutex::new(BabyJubjubSumContext::default(0));
+}
+
+#[link(wasm_import_module = "zkc_node_host")]
+extern "C" {
+    pub fn host_log_str(str_ptr: *const c_uchar, str_len: usize);
 }
 
 #[no_mangle]
@@ -101,13 +109,54 @@ pub fn merkle_get() -> u64 {
 // }
 
 #[no_mangle]
+pub fn wasm_setup_inputs(public_ptr: u32, public_len: u32, private_ptr: u32, private_len: u32) {
+    unsafe {
+        let public_inputs = Vec::<u64>::from_raw_parts(
+            public_ptr as *mut u64,
+            public_len as usize,
+            public_len as usize,
+        );
+        let private_inputs = Vec::<u64>::from_raw_parts(
+            private_ptr as *mut u64,
+            private_len as usize,
+            private_len as usize,
+        );
+
+        CONTEXT.get_or_init(|| Mutex::new(Context::new(public_inputs, private_inputs)));
+    }
+}
+
+#[no_mangle]
+pub fn wasm_dump_output() -> u64 {
+    let m = CONTEXT.get().unwrap();
+    let mut c = m.lock().unwrap();
+
+    let output = c.dump_output();
+
+    let log_str = format!("wasm_dump_output: sending output {:?}", output);
+    unsafe {
+        host_log_str(log_str.as_ptr(), log_str.len());
+    }
+
+    let output_len = output.len();
+    let output_ptr = output.as_ptr();
+    mem::forget(output);
+
+    ((output_ptr as u64) << 32) | (output_len as u64)
+}
+
+#[no_mangle]
 pub fn wasm_input(is_public: u32) -> u64 {
-    panic!()
+    let m = CONTEXT.get().unwrap();
+    let mut c = m.lock().unwrap();
+    c.wasm_input(is_public as i32)
 }
 
 #[no_mangle]
 pub fn wasm_output(v: u64) {
-    panic!()
+    let m = CONTEXT.get().unwrap();
+    let mut c = m.lock().unwrap();
+    c.wasm_output(v)
 }
 
 #[no_mangle]
