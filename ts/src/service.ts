@@ -8,10 +8,12 @@ import IORedis from 'ioredis';
 import express from 'express';
 import { submitProofWithRetry, TxWitness, get_latest_proof } from "./prover.js";
 import cors from "cors";
-import { TRANSACTION_NUMBER, SERVER_PRI_KEY, modelBundle, modelJob} from "./config.js";
+import { TRANSACTION_NUMBER, SERVER_PRI_KEY, modelBundle, modelJob, modelRand } from "./config.js";
 import { ZkWasmUtil } from "zkwasm-service-helper";
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
+import {merkleRootToBeHexString} from "./lib.js";
+import {sha256} from "ethers";
 
 // Load environment variables from .env file
 dotenv.config();
@@ -27,8 +29,6 @@ if (process.env.DEPLOY) {
 if (process.env.REMOTE) {
   remote = true;
 }
-
-
 
 if (process.env.URI) {
   mongodbUri = process.env.URI; //"mongodb:27017";
@@ -83,15 +83,36 @@ let merkle_root = new BigUint64Array([
     2839580074036780766n,
   ]);
 
+function randByte()  {
+  return Math.floor(Math.random() * 0xff);
+}
+
+async function generateRandomSeed() {
+  let randSeed = [randByte(), randByte(), randByte(), randByte(), randByte(), randByte(), randByte(), randByte()];
+  let sha = sha256(new Uint8Array(randSeed));
+  const mask64 = BigInt("0xFFFFFFFFFFFFFFFF");
+  const shaCommitment = BigInt(sha) & mask64;
+  const randRecord = new modelRand({
+    commitment: shaCommitment.toString(),
+    seed: randSeed,
+  });
+  try {
+    await randRecord.save();
+    console.log("Generated Rand Seed:", randSeed, shaCommitment);
+    return shaCommitment;
+  } catch (e) {
+    console.log("Generating random seed error!");
+    process.exit(1)
+  }
+}
+
 async function install_transactions(tx: TxWitness, jobid: string | undefined) {
   console.log("installing transaction into rollup ...");
   transactions_witness.push(tx);
   console.log("transaction installed, rollup pool length is:", transactions_witness.length);
-  if (transactions_witness.length == TRANSACTION_NUMBER) {
-    console.log("rollup pool is full, generating proof:");
-    //for (const t of transactions_witness) {
-    //  console.log(t);
-    //}
+  if (application.preempt()) {
+  //if (transactions_witness.length == TRANSACTION_NUMBER) {
+    console.log("rollup reach its preemption point, generating proof:");
     let txdata = application.finalize();
     console.log("txdata is:", txdata);
     try {
@@ -100,26 +121,36 @@ async function install_transactions(tx: TxWitness, jobid: string | undefined) {
           console.log("proving task submitted at:", task_id);
           console.log("tracking task in db ...", merkle_root);
           const bundleRecord = new modelBundle({
-            merkleRoot: [
-              merkle_root[0].toString(10),
-              merkle_root[1].toString(10),
-              merkle_root[2].toString(10),
-              merkle_root[3].toString(10),
-            ],
+            merkleRoot: merkleRootToBeHexString(merkle_root),
               taskId: task_id,
             });
-          await bundleRecord.save();
-          console.log("task recorded");
+          try {
+            await bundleRecord.save();
+            console.log(`task recorded with key: ${merkleRootToBeHexString(merkle_root)}`);
+          } catch (e) {
+            let record = await modelBundle.find({
+                merkleRoot: merkleRootToBeHexString(merkle_root),
+            });
+            console.log("fatal: conflict db merkle");
+            console.log(record);
+            //throw e
+          }
       }
       transactions_witness = new Array();
+      // need to update merkle_root as the input of next proof
       merkle_root = application.query_root();
-      console.log("merkle root is:", merkle_root);
+      // reset application here
+      console.log("restore root:", merkle_root);
+      await (initApplication as any)(bootstrap);
       application.initialize(merkle_root);
     } catch (e) {
       console.log(e);
       process.exit(1); // this should never happen and we stop the whole process
     }
   }
+  let current_merkle_root = application.query_root();
+  console.log("last root:", current_merkle_root);
+
 }
 
 async function track_error_transactions(tx: TxWitness, jobid: string | undefined) {
@@ -172,6 +203,11 @@ async function main() {
   console.log("initialize sequener queue ...");
   const myQueue = new Queue('sequencer', {connection});
 
+  const waitingCount = await myQueue.getWaitingCount();
+  console.log("waiting Count is:", waitingCount, " perform draining ...");
+  await myQueue.drain();
+
+
   console.log("initialize application merkle db ...");
   application.initialize(merkle_root);
 
@@ -179,26 +215,38 @@ async function main() {
   merkle_root = application.query_root();
 
   // Automatically add a job to the queue every few seconds
-  setInterval(async () => {
-    try {
-      await myQueue.add('autoJob', {command:0});
-    } catch (error) {
-      console.error('Error adding automatic job to the queue:', error);
-      process.exit(1);
-    }
-  }, 5000); // Change the interval as needed (e.g., 5000ms for every 5 seconds)
+  if (application.autotick()) {
+      setInterval(async () => {
+        try {
+          await myQueue.add('autoJob', {command:0});
+        } catch (error) {
+          console.error('Error adding automatic job to the queue:', error);
+          process.exit(1);
+        }
+      }, 5000); // Change the interval as needed (e.g., 5000ms for every 5 seconds)
+  }
 
 
   const worker = new Worker('sequencer', async job => {
     if (job.name == 'autoJob') {
       console.log("handle auto", job.data);
       try {
-          let signature = sign([0n, 0n, 0n, 0n], SERVER_PRI_KEY);
-          let u64array = signature_to_u64array(signature);
-          application.handle_tx(u64array);
-          await install_transactions(signature, job.id);
+        let rand = await generateRandomSeed();
+        let oldSeed = application.randSeed();
+        let seed = 0n;
+        if (oldSeed != 0n) {
+          const randRecord = await modelRand.find({
+                commitment: oldSeed.toString(),
+            });
+          seed = randRecord[0].seed!.readBigInt64LE();
+        };
+        let signature = sign(new BigUint64Array([0n, seed, rand, 0n]), SERVER_PRI_KEY);
+        let u64array = signature_to_u64array(signature);
+        application.handle_tx(u64array);
+        await install_transactions(signature, job.id);
       } catch (error) {
-        console.log("handling auto error", error);
+        console.log("fatal: handling auto tick error, process will terminate.", error);
+        process.exit(1);
       }
     } else if (job.name == 'transaction') {
       console.log("handle transaction ...");

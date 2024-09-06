@@ -11,7 +11,7 @@ import {
 import {
   priv,
   endpoint,
-  image_md5,
+  get_image_md5,
   user_addr
 } from "./config.js";
 
@@ -44,7 +44,7 @@ export async function submitProof(merkle: BigUint64Array, txs: Array<TxWitness>,
   //let proofSubmitMode = ProofSubmitMode.Auto;
   let info: ProvingParams = {
     user_address: user_addr.toLowerCase(),
-    md5: image_md5,
+    md5: get_image_md5(),
     public_inputs: pub_inputs,
     private_inputs: priv_inputs,
     proof_submit_mode: proofSubmitMode, // default is manual
@@ -81,24 +81,32 @@ export async function submitProof(merkle: BigUint64Array, txs: Array<TxWitness>,
   //console.log("response is ", response);
 }
 
+function timeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+    const timeoutPromise = new Promise<T>((_, reject) =>
+          setTimeout(() => reject(new Error("Timeout exceeded")), ms)
+        );
+    return Promise.race([promise, timeoutPromise]);
+}
+
 export async function submitProofWithRetry(merkle: BigUint64Array, txs: Array<TxWitness>, txdata: Uint8Array) {
   for (let i=0; i<10; i++) {
     try {
-      let response = await submitProof(merkle, txs, txdata);
+      let response = await timeout(submitProof(merkle, txs, txdata), 4000);
       return response;
     } catch (e) {
       console.log("submit proof error:", e);
       console.log("retrying ...");
+      continue;
     }
-    console.log("can not generating proof ...");
-    process.exit(1);
   }
+  console.log("can not generating proof ...");
+  process.exit(1);
 }
 
 export async function get_latest_proof(): Promise<Task | null> {
   const helper = new ZkWasmServiceHelper(endpoint, "", "");
   let query = {
-    md5: image_md5,
+    md5: get_image_md5(),
     user_address: null,
     id: null,
     tasktype: "Prove",

@@ -1,6 +1,9 @@
 let wasm;
 export function __wbg_set_wasm(val) {
     wasm = val;
+    cachedBigUint64Memory0 = null;
+    cachedInt32Memory0 = null;
+    cachedUint8Memory0 = null;
 }
 
 
@@ -128,7 +131,7 @@ export function get_config() {
 * @returns {boolean}
 */
 export function preempt() {
-    const ret = wasm.autotick();
+    const ret = wasm.preempt();
     return ret !== 0;
 }
 

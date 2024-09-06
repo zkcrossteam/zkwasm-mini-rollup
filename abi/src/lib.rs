@@ -8,19 +8,46 @@ use primitive_types::U256;
 use wasm_bindgen::prelude::*;
 use core::slice::IterMut;
 
-pub static mut MERKLE_MAP: KeyValueMap<Merkle> = KeyValueMap { merkle: Merkle {
-    root: [
-        14789582351289948625,
-        10919489180071018470,
-        10309858136294505219,
-        2839580074036780766,
-    ]}
+pub static mut MERKLE_MAP: KeyValueMap<Merkle> = KeyValueMap {
+    merkle: Merkle {
+        root: [
+            14789582351289948625,
+            10919489180071018470,
+            10309858136294505219,
+            2839580074036780766,
+        ]}
 };
 
 pub trait StorageData {
     fn from_data(u64data: &mut IterMut<u64>) -> Self;
     fn to_data(&self, u64data: &mut Vec<u64>);
 }
+
+pub struct WithdrawInfo { // 32bits in total
+    pub feature: u32, // 4
+    pub address: [u8; 20], // 20
+    pub amount: u64, // 8
+}
+
+impl WithdrawInfo {
+    pub fn new(limbs: &[u64; 3]) -> Self {
+        let mut address = ((limbs[0] >> 32) as u32).to_le_bytes().to_vec();
+        address.extend_from_slice(&limbs[1].to_le_bytes());
+        address.extend_from_slice(&limbs[2].to_le_bytes());
+
+        WithdrawInfo {
+            feature: 1,
+            address: address.try_into().unwrap(),
+            amount: limbs[0] & 0xffffffff
+        }
+    }
+    pub fn flush(&self, bytes: &mut Vec<u8>) {
+        bytes.extend_from_slice(&self.feature.to_le_bytes());
+        bytes.extend_from_slice(&self.address);
+        bytes.extend_from_slice(&self.amount.to_be_bytes()); //solidity needs be endian
+    }
+}
+
 
 #[derive(Debug, Serialize)]
 pub struct Player<T: StorageData + Default> {
@@ -165,45 +192,62 @@ pub fn conclude_tx_info(data: &[u8]) -> [u64;4] {
 #[macro_export]
 macro_rules! create_zkwasm_apis {
     ($T: ident, $S: ident, $C: ident) => {
-    #[wasm_bindgen]
+        #[wasm_bindgen]
         pub fn handle_tx(params: Vec<u64>) -> u32 {
             let user_address = [params[4], params[5], params[6], params[7]];
             let command = [params[0], params[1], params[2], params[3]];
+            let sig_r = [params[20], params[21], params[22], params[23]];
             let transaction = $T::decode(command);
-            transaction.process(&user_address)
+            transaction.process(&user_address, &sig_r)
         }
 
-    #[wasm_bindgen]
+        #[wasm_bindgen]
         pub fn get_state(pid: Vec<u64>) -> String {
             $S::get_state(pid)
         }
 
-    #[wasm_bindgen]
+        #[wasm_bindgen]
         pub fn decode_error(e: u32) -> String {
             $T::decode_error(e).to_string()
         }
 
 
-    #[wasm_bindgen]
+        #[wasm_bindgen]
         pub fn get_config() -> String {
             $C::to_json_string()
         }
 
-    #[wasm_bindgen]
-    pub fn initialize(root: Vec<u64>) {
-        unsafe {
-            let merkle = zkwasm_rust_sdk::Merkle::load([root[0], root[1], root[2], root[3]]);
-            MERKLE_MAP.merkle = merkle;
-            $S::initialize();
-        };
-    }
-
-    #[wasm_bindgen]
-    pub fn finalize() -> Vec<u8> {
-        unsafe {
-            $C::flush_settlement()
+        #[wasm_bindgen]
+        pub fn preempt() -> bool{
+            $S::preempt()
         }
-    }
+
+        #[wasm_bindgen]
+        pub fn autotick() -> bool{
+            $C::autotick()
+        }
+
+        #[wasm_bindgen]
+        pub fn randSeed() -> u64 {
+            $S::rand_seed()
+        }
+
+
+        #[wasm_bindgen]
+        pub fn initialize(root: Vec<u64>) {
+            unsafe {
+                let merkle = zkwasm_rust_sdk::Merkle::load([root[0], root[1], root[2], root[3]]);
+                MERKLE_MAP.merkle = merkle;
+                $S::initialize();
+            };
+        }
+
+        #[wasm_bindgen]
+        pub fn finalize() -> Vec<u8> {
+            unsafe {
+                $S::flush_settlement()
+            }
+        }
 
 
     #[wasm_bindgen]
@@ -226,7 +270,9 @@ macro_rules! create_zkwasm_apis {
                 handle_tx(params);
             }
 
-            let bytes = $C::flush_settlement();
+            unsafe { zkwasm_rust_sdk::require(preempt()) };
+
+            let bytes = $S::flush_settlement();
             let txdata = conclude_tx_info(bytes.as_slice());
 
             let root = merkle_ref.merkle.root;

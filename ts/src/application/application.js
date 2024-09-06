@@ -1,4 +1,4 @@
-import { __wbg_set_wasm } from "./application_bg.js";
+import { __wbg_set_wasm } from "./application_loader.js";
 import fs from "fs";
 
 let _print_buf = [];
@@ -27,6 +27,9 @@ const __wbg_star0 = (env) => {
     },
     wasm_dbg: (c) => {
       console.log("wasm_dbg", c);
+    },
+    wasm_trace_size: () => {
+      return 0n;
     },
       /**
      * - Convert the number to a character
@@ -95,7 +98,9 @@ function __wbg_finalize_init(instance, module) {
 }
 
 async function __wbg_init(env, input) {
-  if (wasm !== null) return wasm;
+  if (wasm !== null) {
+    console.log("reloading wasm application");
+  };
 
   if (typeof input === 'undefined') {
     input = new URL('application_bg.wasm', import.meta.url);
@@ -119,4 +124,4 @@ async function __wbg_init(env, input) {
 }
 
 export default __wbg_init;
-export * from "./application_bg.js";
+export * from "./application_loader.js";
