@@ -1,9 +1,9 @@
-use halo2curves::ff::PrimeField;
-use halo2curves::bn256::Fr;
-use poseidon::Poseidon;
 use crate::poseidon::POSEIDON_HASHER;
 use bytes_helper::Reduce;
 use bytes_helper::ReduceRule;
+use halo2curves::bn256::Fr;
+use halo2curves::ff::PrimeField;
+use poseidon::Poseidon;
 
 /// Foreign functions that supports the following C code library
 ///

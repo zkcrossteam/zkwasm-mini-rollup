@@ -27,11 +27,10 @@ fn update_leaf(root: Vec<u8>, index: u64, leafdata: Vec<u8>) -> Vec<u8> {
     let root_ptr = root.as_ptr() as *const c_uchar;
     let leafdata_ptr = leafdata.as_ptr() as *const c_uchar;
 
-    let mut output = vec![0u8; 32];
+    let mut output: Vec<u8> = Vec::with_capacity(32);
+    let output_ptr = output.as_mut_ptr() as *mut c_uchar;
 
     unsafe {
-        let output_ptr = output.as_mut_ptr() as *mut c_uchar;
-
         host_update_leaf(
             root_ptr,
             root.len(),
@@ -42,6 +41,7 @@ fn update_leaf(root: Vec<u8>, index: u64, leafdata: Vec<u8>) -> Vec<u8> {
             32,
         );
 
+        output.set_len(32);
         output
     }
 }
@@ -50,12 +50,13 @@ fn update_leaf(root: Vec<u8>, index: u64, leafdata: Vec<u8>) -> Vec<u8> {
 fn get_leaf(root: Vec<u8>, index: u64) -> Vec<u8> {
     let root_ptr = root.as_ptr() as *const c_uchar;
 
-    let mut output = vec![0u8; 32];
+    let mut output: Vec<u8> = Vec::with_capacity(32);
     let output_ptr = output.as_mut_ptr() as *mut c_uchar;
 
     unsafe {
         host_get_leaf(root_ptr, root.len(), index, output_ptr, 32);
 
+        output.set_len(32);
         output
     }
 }
