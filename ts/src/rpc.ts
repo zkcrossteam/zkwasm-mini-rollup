@@ -73,8 +73,7 @@ export class ZKWasmAppRpc {
         JSON.stringify(data)
       );
       if (response.status === 201) {
-        const jsonResponse = response.data;
-        return jsonResponse;
+        return response.data;
       } else {
         throw "UnexpectedResponseStatus"
       }
