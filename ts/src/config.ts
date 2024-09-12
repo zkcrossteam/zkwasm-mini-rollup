@@ -127,5 +127,3 @@ export const modelBundle = mongoose.model('Bundle', bundleSchema);
 export const modelRand = mongoose.model('Rand', randSchema);
 
 export const ServiceHelper = new ZkWasmServiceHelper(endpoint, "", "");
-
-

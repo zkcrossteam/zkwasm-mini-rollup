@@ -1,24 +1,27 @@
 //import initHostBind, * as hostbind from "./wasmbind/hostbind.js";
 import initBootstrap, * as bootstrap from "./bootstrap/bootstrap.js";
 import initApplication, * as application from "./application/application.js";
-import { test_merkle_db_service } from "./test.js";
+//import { test_merkle_db_service } from "./test.js";
 import { verify_sign, LeHexBN, sign } from "./sign.js";
-import { Queue, Worker, Job } from 'bullmq';
-import IORedis from 'ioredis';
+//import { Queue, Worker, Job } from 'bullmq';
+//import IORedis from 'ioredis';
 import express from 'express';
 import { submitProofWithRetry, has_uncomplete_task, TxWitness, get_latest_proof } from "./prover.js";
 import cors from "cors";
-import { SERVER_PRI_KEY, get_mongoose_db, modelBundle, modelJob, modelRand, get_service_port } from "./config.js";
-import { getMerkleArray } from "./settle.js";
-import { ZkWasmUtil } from "zkwasm-service-helper";
+// import { TRANSACTION_NUMBER, SERVER_PRI_KEY, modelBundle, modelJob, modelRand, get_service_port } from "./config.js";
+import { SERVER_PRI_KEY, get_service_port } from "./config.js";
+//import { getMerkleArray } from "./settle.js";
+//import { ZkWasmUtil } from "zkwasm-service-helper";
 import dotenv from 'dotenv';
-import mongoose from 'mongoose';
+//import mongoose from 'mongoose';
 import {merkleRootToBeHexString} from "./lib.js";
 import {sha256} from "ethers";
+import { submitTx, queryLatestKvpair, queryState } from "./zkc_node.js";
 
 // Load environment variables from .env file
 dotenv.config();
 
+/*
 let deploymode = false;
 let remote = false;
 let migrate = false;
@@ -70,7 +73,9 @@ const connection = new IORedis(
 connection.on('end', () => {
   console.log("redis disconnected unexpected ...");
 });
+*/
 
+/*
 let transactions_witness = new Array();
 let merkle_root = new BigUint64Array([
     14789582351289948625n,
@@ -78,6 +83,7 @@ let merkle_root = new BigUint64Array([
     10309858136294505219n,
     2839580074036780766n,
   ]);
+*/
 
 let snapshot = JSON.parse("{}");
 
@@ -85,6 +91,7 @@ function randByte()  {
   return Math.floor(Math.random() * 0xff);
 }
 
+/*
 async function generateRandomSeed() {
   let randSeed = [randByte(), randByte(), randByte(), randByte(), randByte(), randByte(), randByte(), randByte()];
   let sha = sha256(new Uint8Array(randSeed));
@@ -103,16 +110,28 @@ async function generateRandomSeed() {
     process.exit(1)
   }
 }
+*/
+
+
 
 async function install_transactions(tx: TxWitness, jobid: string | undefined) {
   console.log("installing transaction into rollup ...");
-  transactions_witness.push(tx);
-  snapshot = JSON.parse(application.snapshot());
-  console.log("transaction installed, rollup pool length is:", transactions_witness.length);
+  //transactions_witness.push(tx);
+  //snapshot = JSON.parse(application.snapshot());
+  //console.log("transaction installed, rollup pool length is:", transactions_witness.length);
   if (application.preempt()) {
     console.log("rollup reach its preemption point, generating proof:");
-    let txdata = application.finalize();
-    console.log("txdata is:", txdata);
+    //let txdata = application.finalize();
+    //console.log("txdata is:", txdata);
+    try {
+      let response = await submitTx(new Array<TxWitness>(tx), new Uint8Array());
+      console.log("install transactions done. resp is ", response);
+    } catch (e) {
+      console.log(e);
+      process.exit(1); // this should never happen and we stop the whole process
+    }
+  }
+    /*
     try {
       if (deploymode) {
           let task_id = await submitProofWithRetry(merkle_root, transactions_witness, txdata);
@@ -148,6 +167,7 @@ async function install_transactions(tx: TxWitness, jobid: string | undefined) {
   }
   let current_merkle_root = application.query_root();
   console.log("last root:", current_merkle_root);
+  */
 
 }
 
@@ -181,6 +201,7 @@ async function main() {
   //console.log(application);
   await (initApplication as any)(bootstrap);
 
+  /*
   console.log("check merkel database connection ...");
   test_merkle_db_service();
 
@@ -216,33 +237,64 @@ async function main() {
       console.log("updated merkle root", merkle_root);
     }
   }
+  */
+
+  /*
   console.log("initialize sequener queue ...");
   const myQueue = new Queue('sequencer', {connection});
 
   const waitingCount = await myQueue.getWaitingCount();
   console.log("waiting Count is:", waitingCount, " perform draining ...");
   await myQueue.drain();
+  */
 
-
+  /*
   console.log("initialize application merkle db ...");
   application.initialize(merkle_root);
 
   // update the merkle root variable
   merkle_root = application.query_root();
+  */
 
   // Automatically add a job to the queue every few seconds
   if (application.autotick()) {
       setInterval(async () => {
+        const job = await handleJob('autoJob', {command:0});
+        /*
         try {
           await myQueue.add('autoJob', {command:0});
         } catch (error) {
           console.error('Error adding automatic job to the queue:', error);
           process.exit(1);
         }
+        */
+        // TODO: call submit autoJob
       }, 5000); // Change the interval as needed (e.g., 5000ms for every 5 seconds)
   }
 
+  // TODO: func to submit autoJob
+  async function handleJob(name: string, data: any) {
+    if (name == 'autoJob') {
+      console.log("handle auto", data);
+      let signature = sign(new BigUint64Array([0n, 0n, 0n, 0n]), SERVER_PRI_KEY);
+      await install_transactions(signature, undefined);
+      console.log("handle auto done");
+    } else if (name == 'transaction') {
+      console.log("handle transaction ...");
+      try {
+        let signature = data;
+        let u64array = signature_to_u64array(signature);
+        console.log("tx data", signature);
+        application.verify_tx_signature(u64array);
+        await install_transactions(signature, undefined);
+        console.log("done");
+      } catch (e) {
+        throw e
+      }
+    }
+  }
 
+  /*
   const worker = new Worker('sequencer', async job => {
     if (job.name == 'autoJob') {
       console.log("handle auto", job.data);
@@ -298,7 +350,7 @@ async function main() {
       }
     }
   }, {connection});
-
+  */
 
   console.log("start express server");
   const app = express();
@@ -351,10 +403,9 @@ async function main() {
         console.error('Invalid signature:');
         res.status(500).send('Invalid signature');
       } else {
-        const job = await myQueue.add('transaction', { value });
+        const job = await handleJob('transaction', value);
         res.status(201).send({
           success: true,
-          jobid: job.id
         });
       }
     } catch (error) {
@@ -373,14 +424,20 @@ async function main() {
 
     try {
       const pkx = new LeHexBN(value.pkx).toU64Array();
+      console.log("pkx is", pkx);
       let u64array = new BigUint64Array(4);
       u64array.set(pkx);
-      let jstr = application.get_state(pkx);
+      console.log("u64array is", u64array);
+
+      let jstr = await queryState(u64array);
+      console.log("queryState response: ", jstr);
       let player = JSON.parse(jstr);
+
       let result = {
         player: player,
-        state: snapshot
+        state: {}
       }
+
       res.status(201).send({
         success: true,
         data: JSON.stringify(result),
@@ -391,6 +448,7 @@ async function main() {
     }
   });
 
+  /*
   app.get('/job/:id', async (req, res) => {
     try {
       let jobId = req.params.id;
@@ -402,6 +460,7 @@ async function main() {
       res.status(500).json({ message: (err as Error).toString()});
     }
   });
+  */
 
   app.post('/config', async (req, res) => {
     try {

@@ -39,6 +39,8 @@ export class ZKWasmAppRpc {
   public async sendTransaction(cmd: BigUint64Array, prikey: string): Promise<number> {
     try {
       let resp:any = await this.sendRawTransaction(cmd, prikey);
+      return 0;
+      /*
       for (let i=0; i<5; i++) {//detect job status with 1 sec delay
         await delay(1000);
         let jobStatus;
@@ -59,6 +61,7 @@ export class ZKWasmAppRpc {
         }
       }
       throw Error("MonitorTransactionFail");
+            */
     } catch(e) {
       //console.log(e);
       throw e;
@@ -73,8 +76,7 @@ export class ZKWasmAppRpc {
         JSON.stringify(data)
       );
       if (response.status === 201) {
-        const jsonResponse = response.data;
-        return jsonResponse;
+        return response.data;
       } else {
         throw "UnexpectedResponseStatus"
       }
