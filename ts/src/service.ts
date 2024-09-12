@@ -183,6 +183,7 @@ async function main() {
   //console.log(application);
   await (initApplication as any)(bootstrap);
 
+  /*
   console.log("check merkel database connection ...");
   test_merkle_db_service();
   //initialize merkle_root based on the latest task
@@ -200,6 +201,7 @@ async function main() {
       console.log("updated merkle root", merkle_root);
     }
   }
+  */
   console.log("initialize sequener queue ...");
   const myQueue = new Queue('sequencer', {connection});
 
@@ -208,11 +210,13 @@ async function main() {
   await myQueue.drain();
 
 
+  /*
   console.log("initialize application merkle db ...");
   application.initialize(merkle_root);
 
   // update the merkle root variable
   merkle_root = application.query_root();
+  */
 
   // Automatically add a job to the queue every few seconds
   if (application.autotick()) {
