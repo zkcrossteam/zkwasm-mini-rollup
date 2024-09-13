@@ -1,23 +1,24 @@
 //import initHostBind, * as hostbind from "./wasmbind/hostbind.js";
 import initBootstrap, * as bootstrap from "./bootstrap/bootstrap.js";
 import initApplication, * as application from "./application/application.js";
-import { test_merkle_db_service } from "./test.js";
+//import { test_merkle_db_service } from "./test.js";
 import { verify_sign, LeHexBN, sign } from "./sign.js";
 import { Queue, Worker, Job } from 'bullmq';
-import IORedis from 'ioredis';
+//import IORedis from 'ioredis';
 import express from 'express';
 import { submitProofWithRetry, TxWitness, get_latest_proof } from "./prover.js";
 import cors from "cors";
 import { TRANSACTION_NUMBER, SERVER_PRI_KEY, modelBundle, modelJob, modelRand } from "./config.js";
-import { ZkWasmUtil } from "zkwasm-service-helper";
+//import { ZkWasmUtil } from "zkwasm-service-helper";
 import dotenv from 'dotenv';
-import mongoose from 'mongoose';
+//import mongoose from 'mongoose';
 import {merkleRootToBeHexString} from "./lib.js";
 import {sha256} from "ethers";
 
 // Load environment variables from .env file
 dotenv.config();
 
+/*
 let deploymode = false;
 let remote = false;
 let mongodbUri = "mongodb://localhost";
@@ -74,6 +75,7 @@ const connection = new IORedis(
 connection.on('end', () => {
   console.log("redis disconnected unexpected ...");
 });
+*/
 
 let transactions_witness = new Array();
 let merkle_root = new BigUint64Array([
