@@ -204,13 +204,15 @@ async function main() {
     }
   }
   */
+
+  /*
   console.log("initialize sequener queue ...");
   const myQueue = new Queue('sequencer', {connection});
 
   const waitingCount = await myQueue.getWaitingCount();
   console.log("waiting Count is:", waitingCount, " perform draining ...");
   await myQueue.drain();
-
+  */
 
   /*
   console.log("initialize application merkle db ...");
@@ -223,14 +225,19 @@ async function main() {
   // Automatically add a job to the queue every few seconds
   if (application.autotick()) {
       setInterval(async () => {
+        /*
         try {
           await myQueue.add('autoJob', {command:0});
         } catch (error) {
           console.error('Error adding automatic job to the queue:', error);
           process.exit(1);
         }
+        */
+        // TODO: call submit autoJob
       }, 5000); // Change the interval as needed (e.g., 5000ms for every 5 seconds)
   }
+
+  // TODO: func to submit autoJob
 
 
   const worker = new Worker('sequencer', async job => {
@@ -333,11 +340,14 @@ async function main() {
         console.error('Invalid signature:');
         res.status(500).send('Invalid signature');
       } else {
+        /*
         const job = await myQueue.add('transaction', { value });
         res.status(201).send({
           success: true,
           jobid: job.id
         });
+        */
+        // TODO: call submit-tx function
       }
     } catch (error) {
       console.error('Error adding job to the queue:', error);
@@ -357,7 +367,8 @@ async function main() {
       const pkx = new LeHexBN(value.pkx).toU64Array();
       let u64array = new BigUint64Array(4);
       u64array.set(pkx);
-      let jstr = application.get_state(pkx);
+      // TODO: call zkc-node query status
+      // let jstr = application.get_state(pkx);
       res.status(201).send({
         success: true,
         data: jstr
@@ -368,6 +379,7 @@ async function main() {
     }
   });
 
+  /*
   app.get('/job/:id', async (req, res) => {
     try {
       let jobId = req.params.id;
@@ -379,6 +391,7 @@ async function main() {
       res.status(500).json({ message: (err as Error).toString()});
     }
   });
+  */
 
   app.post('/config', async (req, res) => {
     try {
