@@ -1,4 +1,10 @@
 import axios from 'axios';
+import {
+  get_image_md5,
+} from "./config.js";
+import { TxWitness } from "./prover.js";
+
+const zkc_node_endpoint = "http://127.0.0.1:12345";
 
 export class ZKCNodeHelper {
     private baseUrl: string;
@@ -12,9 +18,8 @@ export class ZKCNodeHelper {
         });
     }
 
-    public async submitTx(md5: string, publicInputs: string[],
-                          privateInputs: string[]): Promise<JSON> {
-
+    public async submitTx(md5: string, publicInputs: Array<string>,
+                          privateInputs: Array<string>, txdata: Uint8Array): Promise<JSON> {
         try {
             const params = {
                 "image_md5": md5,
@@ -46,4 +51,25 @@ export class ZKCNodeHelper {
             throw "submitTxError " + error;
         }
     }
+}
+
+export async function submitTx(txs: Array<TxWitness>, txdata: Uint8Array) {
+    const priv_inputs: Array<string> = [];
+    priv_inputs.push(`${txs.length}:i64`);
+    for (const tx of txs) {
+        priv_inputs.push(`0x${tx.msg}:bytes-packed`);
+        priv_inputs.push(`0x${tx.pkx}:bytes-packed`);
+        priv_inputs.push(`0x${tx.pky}:bytes-packed`);
+        priv_inputs.push(`0x${tx.sigx}:bytes-packed`);
+        priv_inputs.push(`0x${tx.sigy}:bytes-packed`);
+        priv_inputs.push(`0x${tx.sigr}:bytes-packed`);
+    };
+
+    // TODO: txdata
+
+    const helper = new ZKCNodeHelper(zkc_node_endpoint);
+
+    let response = await helper.submitTx(get_image_md5(), [], priv_inputs, new Uint8Array());
+    console.log("response is ", response);
+    return response;
 }
