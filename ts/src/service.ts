@@ -376,7 +376,7 @@ async function main() {
         console.error('Invalid signature:');
         res.status(500).send('Invalid signature');
       } else {
-        const job = await handleJob('transaction', { value });
+        const job = await handleJob('transaction', value);
         res.status(201).send({
           success: true,
         });
