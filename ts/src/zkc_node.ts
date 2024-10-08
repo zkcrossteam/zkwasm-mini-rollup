@@ -18,6 +18,37 @@ export class ZKCNodeHelper {
         });
     }
 
+    public async queryLatestKvpair(md5: string, key: BigUint64Array): BigUint64Array {
+        try {
+            const params = {
+                "image_md5": md5,
+                "key": key.map((v) => v.toString())
+            }
+            const response = await this.instance.post(
+                "/",
+                {
+                    "jsonrpc": "2.0",
+                    "method": "rpc-query-latest-kvpair",
+                    "params": params
+                }
+            )
+            if (response.status === 200) {
+                if (response.data?.error === undefined) {
+                    const jsonResult = response.data?.result;
+                    return jsonResult;
+                } else {
+                    const jsonError = response.data?.error;
+                    throw "submitTxServerError " + jsonError;
+                }
+            } else {
+                throw "submitTxError";
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            throw "submitTxError " + error;
+        }
+    }
+
     public async submitTx(md5: string, publicInputs: Array<string>,
                           privateInputs: Array<string>, txdata: Uint8Array): Promise<JSON> {
         try {
@@ -70,6 +101,14 @@ export async function submitTx(txs: Array<TxWitness>, txdata: Uint8Array) {
     const helper = new ZKCNodeHelper(zkc_node_endpoint);
 
     let response = await helper.submitTx(get_image_md5(), [], priv_inputs, new Uint8Array());
+    console.log("response is ", response);
+    return response;
+}
+
+export async function queryLatestKvpair(key: BigUint64Array) {
+    const helper = new ZKCNodeHelper(zkc_node_endpoint);
+
+    let response = await helper.queryLatestKvpair(get_image_md5(), key);
     console.log("response is ", response);
     return response;
 }

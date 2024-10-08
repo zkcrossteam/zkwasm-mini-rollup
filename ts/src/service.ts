@@ -15,7 +15,7 @@ import dotenv from 'dotenv';
 //import mongoose from 'mongoose';
 import {merkleRootToBeHexString} from "./lib.js";
 import {sha256} from "ethers";
-import {submitTx} from "./zkc_node.js";
+import { submitTx, queryLatestKvpair } from "./zkc_node.js";
 
 // Load environment variables from .env file
 dotenv.config();
@@ -399,11 +399,11 @@ async function main() {
       const pkx = new LeHexBN(value.pkx).toU64Array();
       let u64array = new BigUint64Array(4);
       u64array.set(pkx);
-      // TODO: call zkc-node query status
-      // let jstr = application.get_state(pkx);
+      let response = queryLatestKvpair(pkx);
+      // TODO: decode response
       res.status(201).send({
         success: true,
-//        data: jstr
+//        data: jstrw
       });
 
     } catch (error) {
