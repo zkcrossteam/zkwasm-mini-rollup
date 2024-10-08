@@ -18,11 +18,13 @@ export class ZKCNodeHelper {
         });
     }
 
-    public async queryLatestKvpair(md5: string, key: BigUint64Array): BigUint64Array {
+    public async queryLatestKvpair(md5: string, key: BigUint64Array): Promise<BigUint64Array> {
         try {
+            const keyStr: Array<string> = key.map((v) => v.toString());
+
             const params = {
                 "image_md5": md5,
-                "key": key.map((v) => v.toString())
+                "key": keyStr
             }
             const response = await this.instance.post(
                 "/",
