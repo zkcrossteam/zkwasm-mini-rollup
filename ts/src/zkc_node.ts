@@ -20,9 +20,12 @@ export class ZKCNodeHelper {
 
     public async queryLatestKvpair(md5: string, key: BigUint64Array): Promise<BigUint64Array> {
         try {
+            const strKey: Array<string> = new Array<string>(key.length);
+            key.forEach((v, i) => strKey[i] = v.toString());
+
             const params = {
                 "image_md5": md5,
-                "key": key.map((ele) => ele.toString()),
+                "key": strKey
             }
             const response = await this.instance.post(
                 "/",
