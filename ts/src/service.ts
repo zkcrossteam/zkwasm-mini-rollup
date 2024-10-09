@@ -399,7 +399,18 @@ async function main() {
       const pkx = new LeHexBN(value.pkx).toU64Array();
       let u64array = new BigUint64Array(4);
       u64array.set(pkx);
-      let response = queryLatestKvpair(pkx);
+
+      let pid = new BigUint64Array(2);
+      pid[0] = u64array[1];
+      pid[1] = u64array[2];
+
+      let pkey = new BigUint64Array(4);
+      pkey[0] = pid[0];
+      pkey[1] = pid[1];
+      pkey[2] = 0xff00n;
+      pkey[3] = 0xff01n;
+
+      let response = queryLatestKvpair(pkey);
       // TODO: decode response
       res.status(201).send({
         success: true,
