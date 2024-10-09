@@ -38,7 +38,7 @@ export class ZKCNodeHelper {
             if (response.status === 200) {
                 if (response.data?.error === undefined) {
                     const jsonResult = response.data?.result;
-                    const strValue = jsonResult.value;
+                    const strValue: string[] = jsonResult.value;
                     const u64array = new BigUint64Array(strValue.map((v) => BigInt(v)));
                     return u64array;
                 } else {
