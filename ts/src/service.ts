@@ -6,9 +6,10 @@ import { verify_sign, LeHexBN, sign } from "./sign.js";
 import { Queue, Worker, Job } from 'bullmq';
 import IORedis from 'ioredis';
 import express from 'express';
-import { submitProofWithRetry, TxWitness, get_latest_proof } from "./prover.js";
+import { submitProofWithRetry, has_uncomplete_task, TxWitness, get_latest_proof } from "./prover.js";
 import cors from "cors";
-import { TRANSACTION_NUMBER, SERVER_PRI_KEY, modelBundle, modelJob, modelRand } from "./config.js";
+import { SERVER_PRI_KEY, modelBundle, modelJob, modelRand, get_service_port } from "./config.js";
+import { getMerkleArray } from "./settle.js";
 import { ZkWasmUtil } from "zkwasm-service-helper";
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
@@ -20,7 +21,9 @@ dotenv.config();
 
 let deploymode = false;
 let remote = false;
+let migrate = false;
 let mongodbUri = "mongodb://localhost";
+let redisHost ;
 
 if (process.env.DEPLOY) {
   deploymode = true;
@@ -28,6 +31,10 @@ if (process.env.DEPLOY) {
 
 if (process.env.REMOTE) {
   remote = true;
+}
+
+if (process.env.MIGRATE) {
+  migrate = true;
 }
 
 if (process.env.URI) {
@@ -44,7 +51,14 @@ const host = (() => {
   }
 })();
 
-mongoose.connect(`${mongodbUri}/job-tracker`, {
+redisHost = host;
+if (process.env.REDISHOST) {
+  redisHost = process.env.REDISHOST;
+}
+
+let imageMD5Prefix = process.env.IMAGE || "";
+
+mongoose.connect(`${mongodbUri}/${imageMD5Prefix}_job-tracker`, {
     //useNewUrlParser: true,
     //useUnifiedTopology: true,
 });
@@ -57,11 +71,11 @@ db.once('open', () => {
 });
 
 
-console.log("redis server:", host);
+console.log("redis server:", redisHost);
 
 const connection = new IORedis(
     {
-        host: host,  // Your Redis server host
+        host: redisHost,  // Your Redis server host
         port: 6379,        // Your Redis server port
         reconnectOnError: (err) => {
           console.log("reconnect on error", err);
@@ -82,6 +96,8 @@ let merkle_root = new BigUint64Array([
     10309858136294505219n,
     2839580074036780766n,
   ]);
+
+let snapshot = JSON.parse("{}");
 
 function randByte()  {
   return Math.floor(Math.random() * 0xff);
@@ -109,9 +125,9 @@ async function generateRandomSeed() {
 async function install_transactions(tx: TxWitness, jobid: string | undefined) {
   console.log("installing transaction into rollup ...");
   transactions_witness.push(tx);
+  snapshot = JSON.parse(application.snapshot());
   console.log("transaction installed, rollup pool length is:", transactions_witness.length);
   if (application.preempt()) {
-  //if (transactions_witness.length == TRANSACTION_NUMBER) {
     console.log("rollup reach its preemption point, generating proof:");
     let txdata = application.finalize();
     console.log("txdata is:", txdata);
@@ -185,8 +201,19 @@ async function main() {
 
   console.log("check merkel database connection ...");
   test_merkle_db_service();
+
+  if (migrate) {
+    if (remote) {throw Error("Can't migrate in remote mode");}
+    merkle_root = await getMerkleArray();
+    console.log("Migrate: updated merkle root", merkle_root);
+  }
   //initialize merkle_root based on the latest task
   if (remote) {
+    const hasTasks = await has_uncomplete_task();
+    if (hasTasks) {
+     console.log("There are uncompleted tasks. try later...");
+     process.exit(1);
+    }
     let task = await get_latest_proof();
     console.log("latest task", task?.instances);
     if (task) {
@@ -269,6 +296,14 @@ async function main() {
           throw Error(errorMsg)
         }
         console.log("done");
+        const pkx = new LeHexBN(job.data.value.pkx).toU64Array();
+        let jstr = application.get_state(pkx);
+        let player = JSON.parse(jstr);
+        let result = {
+          player: player,
+          state: snapshot
+        };
+        return result
       } catch (e) {
         throw e
       }
@@ -278,7 +313,7 @@ async function main() {
 
   console.log("start express server");
   const app = express();
-  const PORT = 3000;
+  const port = get_service_port();
 
   app.use(express.json());
   app.use(cors());
@@ -352,9 +387,14 @@ async function main() {
       let u64array = new BigUint64Array(4);
       u64array.set(pkx);
       let jstr = application.get_state(pkx);
+      let player = JSON.parse(jstr);
+      let result = {
+        player: player,
+        state: snapshot
+      }
       res.status(201).send({
         success: true,
-        data: jstr
+        data: JSON.stringify(result),
       });
 
     } catch (error) {
@@ -388,8 +428,8 @@ async function main() {
   });
 
   // Start the server
-  app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
+  app.listen(port, () => {
+    console.log(`Server is running on http://0.0.0.0:${port}`);
   });
 }
 

@@ -36,7 +36,7 @@ impl WithdrawInfo {
         address.extend_from_slice(&limbs[2].to_le_bytes());
 
         WithdrawInfo {
-            feature: 1,
+            feature: 0,
             address: address.try_into().unwrap(),
             amount: limbs[0] & 0xffffffff
         }
@@ -207,6 +207,11 @@ macro_rules! create_zkwasm_apis {
         }
 
         #[wasm_bindgen]
+        pub fn snapshot() -> String {
+            $S::snapshot()
+        }
+
+        #[wasm_bindgen]
         pub fn decode_error(e: u32) -> String {
             $T::decode_error(e).to_string()
         }
@@ -254,12 +259,16 @@ macro_rules! create_zkwasm_apis {
         pub fn zkmain() {
             use zkwasm_rust_sdk::wasm_input;
             use zkwasm_rust_sdk::wasm_output;
+            use zkwasm_rust_sdk::wasm_trace_size;
             let merkle_ref = unsafe {&mut MERKLE_MAP};
             let tx_length = unsafe {wasm_input(0)};
 
             unsafe {
                 initialize([wasm_input(1), wasm_input(1), wasm_input(1), wasm_input(1)].to_vec())
             }
+
+            let trace = unsafe {wasm_trace_size()};
+            zkwasm_rust_sdk::dbg!("trace after initialize: {}\n", trace);
 
             for _ in 0..tx_length {
                 let mut params = Vec::with_capacity(24);
@@ -268,7 +277,10 @@ macro_rules! create_zkwasm_apis {
                 }
                 verify_tx_signature(params.clone());
                 handle_tx(params);
+                let trace = unsafe {wasm_trace_size()};
+                zkwasm_rust_sdk::dbg!("trace track: {}\n", trace);
             }
+
 
             unsafe { zkwasm_rust_sdk::require(preempt()) };
 

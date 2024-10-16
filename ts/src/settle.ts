@@ -1,24 +1,56 @@
 import BN from "bn.js";
 import { ethers } from "ethers";
-import { ServiceHelper, contract_addr, modelBundle, priv } from "./config.js";
+import { ServiceHelper, get_contract_addr, get_image_md5, modelBundle, get_settle_private_account } from "./config.js";
 import abiData from './Proxy.json' assert { type: 'json' };
 import mongoose from 'mongoose';
 import {ZkWasmUtil, PaginationResult, QueryParams, Task, VerifyProofParams} from "zkwasm-service-helper";
 import { U8ArrayUtil, NumberUtil } from './lib.js';
+import dotenv from 'dotenv';
 
-let mongodbUri = "localhost";
+dotenv.config();
+
+let mongodbUri = "mongodb://localhost";
 
 if (process.env.URI) {
   mongodbUri = process.env.URI; //"mongodb:27017";
 }
 
-// Replace with your network configuration
-const provider = new ethers.JsonRpcProvider("https://ethereum-sepolia-rpc.publicnode.com");
-const signer = new ethers.Wallet(priv, provider);
+let provider = new ethers.JsonRpcProvider("https://ethereum-sepolia-rpc.publicnode.com");
+if (process.env.RPC_PROVIDER) {
+ provider = new ethers.JsonRpcProvider(process.env.RPC_PROVIDER);
+}
+
+const signer = new ethers.Wallet(get_settle_private_account(), provider);
 //
 const constants = {
-  proxyAddress: contract_addr,
+  proxyAddress: get_contract_addr(),
 };
+
+function convertToBigUint64Array(combinedRoot: bigint): BigUint64Array {
+ const result = new BigUint64Array(4);
+
+ for (let i = 3; i >= 0; i--) {
+    result[i] = combinedRoot & BigInt(2n ** 64n - 1n);
+    combinedRoot = combinedRoot >> 64n;
+ }
+
+ return result;
+ }
+
+export async function getMerkleArray(): Promise<BigUint64Array>{
+  // Connect to the Proxy contract
+  const proxy = new ethers.Contract(constants.proxyAddress, abiData.abi, provider);
+  // Fetch the proxy information
+  let proxyInfo = await proxy.getProxyInfo();
+  console.log("Proxy Info:", proxyInfo);
+  // Extract the old Merkle root
+  const oldRoot = proxyInfo.merkle_root;
+  console.log("Type of oldRoot:", typeof oldRoot);
+  console.log("Old Merkle Root:", oldRoot);
+  console.log("Settle:Old Merkle Root in u64:",convertToBigUint64Array(oldRoot));
+
+  return convertToBigUint64Array(oldRoot);
+}
 
 async function getMerkle(): Promise<String>{
   // Connect to the Proxy contract
@@ -30,15 +62,17 @@ async function getMerkle(): Promise<String>{
   const oldRoot = proxyInfo.merkle_root;
   console.log("Type of oldRoot:", typeof oldRoot);
   console.log("Old Merkle Root:", oldRoot);
-  let oldRootBeString = '0x' + oldRoot.toString(16);
+  console.log("Settle:Old Merkle Root in u64:",convertToBigUint64Array(oldRoot));
+
+  let bnStr = oldRoot.toString(10);
+  let bn = new BN(bnStr, 10);
+  let oldRootBeString = '0x' + bn.toString("hex", 64);
+
   console.log("Old Merkle Root(string):", oldRootBeString);
-  //let oldRootU64Array = new NumberUtil(oldRoot.toString()).toU64StringArray();
-  //console.log("Old Merkle Root U64 Array:", oldRootU64Array);
-  //return oldRootU64Array;
   return oldRootBeString;
 }
-
-mongoose.connect(`mongodb://${mongodbUri}/job-tracker`, {
+let imageMD5Prefix = process.env.IMAGE || "";
+mongoose.connect(`${mongodbUri}/${imageMD5Prefix}_job-tracker`, {
     //useNewUrlParser: true,
     //useUnifiedTopology: true,
 });
@@ -53,14 +87,21 @@ async function getTask(taskid: string) {
           tasktype: "Prove",
           taskstatus: "Done",
           user_address: null,
-          md5: null,
+          md5: get_image_md5(),
           total: 1,
         };
 
   const response: PaginationResult<Task[]> = await ServiceHelper.loadTasks(
     queryParams
   );
+
   return response.data[0];
+}
+
+async function getTaskWithTimeout(taskId: string, timeout: number): Promise<any> {
+ return Promise.race([getTask(taskId), new Promise((_, reject) =>
+     setTimeout(() => reject(new Error('load proof task Timeout exceeded')), timeout))
+	]);
 }
 
 async function trySettle() {
@@ -71,8 +112,11 @@ async function trySettle() {
     let record = await modelBundle.findOne({ merkleRoot: merkleRoot});
     if (record) {
       let taskId = record.taskId;
-      let data0 = await getTask(taskId);
-      //console.log(data0);
+      let data0 = await getTaskWithTimeout(taskId, 20000);
+
+      if (data0.proof.length == 0) {
+        throw new Error("proving not complete!");
+      }
       let shadowInstances = data0.shadow_instances;
       let batchInstances = data0.batch_instances;
 
@@ -112,8 +156,17 @@ async function trySettle() {
 }
 
 // start monitoring and settle
+async function main() {
+ while (true) {
+     await trySettle();
+     await new Promise(resolve => setTimeout(resolve, 60000));
+ }
+}
 
-while (true) {
-  await trySettle();
-  await new Promise(resolve => setTimeout(resolve, 5000));
+// Check if this module is being run directly
+if (import.meta.url === `file://${process.argv[1]}`) {
+    console.log("Running settle.js directly");
+    main().catch(console.error);
+} else {
+    console.log("settle.js is being imported as a module");
 }

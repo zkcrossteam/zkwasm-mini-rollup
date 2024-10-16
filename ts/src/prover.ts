@@ -9,10 +9,10 @@ import {
 } from "zkwasm-service-helper";
 
 import {
-  priv,
+  get_user_private_account,
   endpoint,
   get_image_md5,
-  user_addr
+  get_user_addr,
 } from "./config.js";
 
 export interface TxWitness {
@@ -43,7 +43,7 @@ export async function submitProof(merkle: BigUint64Array, txs: Array<TxWitness>,
   let proofSubmitMode = ProofSubmitMode.Manual; // Auto
   //let proofSubmitMode = ProofSubmitMode.Auto;
   let info: ProvingParams = {
-    user_address: user_addr.toLowerCase(),
+    user_address: get_user_addr().toLowerCase(),
     md5: get_image_md5(),
     public_inputs: pub_inputs,
     private_inputs: priv_inputs,
@@ -66,7 +66,7 @@ export async function submitProof(merkle: BigUint64Array, txs: Array<TxWitness>,
 
   let signature: string;
   try {
-    signature = await ZkWasmUtil.signMessage(msgString, priv);
+    signature = await ZkWasmUtil.signMessage(msgString, get_user_private_account());
   } catch (e: unknown) {
     console.log("error signing message", e);
     throw "Signing proving message failesd";
@@ -111,6 +111,7 @@ export async function get_latest_proof(): Promise<Task | null> {
     id: null,
     tasktype: "Prove",
     taskstatus: "Done",
+    total: 1,
   };
   let tasks = await helper.loadTasks(query);
   if (tasks.data.length == 0) {
@@ -118,4 +119,26 @@ export async function get_latest_proof(): Promise<Task | null> {
   } else {
     return tasks.data[0];
   }
+}
+
+export async function has_uncomplete_task(): Promise<boolean> {
+  const helper = new ZkWasmServiceHelper(endpoint, "", "");
+  let query = {
+    md5: get_image_md5(),
+    user_address: null,
+    id: null,
+    tasktype: "Prove",
+    taskstatus: "Pending",
+    total: 1,
+  };
+  let tasks = await helper.loadTaskList(query);
+
+  // If no Pending tasks, check for Processing tasks
+  if (tasks.data.length === 0) {
+    query.taskstatus = "Processing";
+    tasks = await helper.loadTaskList(query);
+  }
+
+  // Return true if there are any uncompleted tasks, false otherwise
+  return tasks.data.length > 0;
 }
