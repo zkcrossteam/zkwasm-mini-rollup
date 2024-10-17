@@ -8,8 +8,8 @@ import { verify_sign, LeHexBN, sign } from "./sign.js";
 import express from 'express';
 import { submitProofWithRetry, has_uncomplete_task, TxWitness, get_latest_proof } from "./prover.js";
 import cors from "cors";
-// import { SERVER_PRI_KEY, modelBundle, modelJob, modelRand, get_service_port } from "./config.js";
-import { TRANSACTION_NUMBER, SERVER_PRI_KEY, get_service_port } from "./config.js";
+// import { TRANSACTION_NUMBER, SERVER_PRI_KEY, modelBundle, modelJob, modelRand, get_service_port } from "./config.js";
+import { SERVER_PRI_KEY, get_service_port } from "./config.js";
 //import { getMerkleArray } from "./settle.js";
 //import { ZkWasmUtil } from "zkwasm-service-helper";
 import dotenv from 'dotenv';
@@ -438,7 +438,7 @@ async function main() {
       let response = await queryState(u64array);
       console.log("queryState response: ", response);
 
-      let player = JSON.parse(response);
+      let player = response;
 
       let result = {
         player: player,
