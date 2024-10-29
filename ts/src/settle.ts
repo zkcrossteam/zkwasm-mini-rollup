@@ -1,19 +1,15 @@
 import BN from "bn.js";
 import { ethers } from "ethers";
-import { ServiceHelper, get_contract_addr, get_image_md5, modelBundle, get_settle_private_account } from "./config.js";
+import { ServiceHelper, get_mongoose_db, get_contract_addr, get_image_md5, modelBundle, get_settle_private_account } from "./config.js";
 import abiData from './Proxy.json' assert { type: 'json' };
 import mongoose from 'mongoose';
 import {ZkWasmUtil, PaginationResult, QueryParams, Task, VerifyProofParams} from "zkwasm-service-helper";
 import { U8ArrayUtil, NumberUtil } from './lib.js';
+import { submitRawProof} from "./prover.js";
+import { decodeWithdraw} from "./convention.js";
 import dotenv from 'dotenv';
 
 dotenv.config();
-
-let mongodbUri = "mongodb://localhost";
-
-if (process.env.URI) {
-  mongodbUri = process.env.URI; //"mongodb:27017";
-}
 
 let provider = new ethers.JsonRpcProvider("https://ethereum-sepolia-rpc.publicnode.com");
 if (process.env.RPC_PROVIDER) {
@@ -71,8 +67,8 @@ async function getMerkle(): Promise<String>{
   console.log("Old Merkle Root(string):", oldRootBeString);
   return oldRootBeString;
 }
-let imageMD5Prefix = process.env.IMAGE || "";
-mongoose.connect(`${mongodbUri}/${imageMD5Prefix}_job-tracker`, {
+
+mongoose.connect(get_mongoose_db(), {
     //useNewUrlParser: true,
     //useUnifiedTopology: true,
 });
@@ -81,11 +77,11 @@ const db = mongoose.connection;
 db.on('error', console.error.bind(console, 'connection error:'));
 db.once('open', function() {console.log("Connected to the database")});
 
-async function getTask(taskid: string) {
+async function getTask(taskid: string, d_state: string|null) {
   const queryParams: QueryParams = {
           id: taskid,
           tasktype: "Prove",
-          taskstatus: "Done",
+          taskstatus: d_state,
           user_address: null,
           md5: get_image_md5(),
           total: 1,
@@ -99,10 +95,50 @@ async function getTask(taskid: string) {
 }
 
 async function getTaskWithTimeout(taskId: string, timeout: number): Promise<any> {
- return Promise.race([getTask(taskId), new Promise((_, reject) =>
+ return Promise.race([getTask(taskId, "Done"), new Promise((_, reject) =>
      setTimeout(() => reject(new Error('load proof task Timeout exceeded')), timeout))
 	]);
 }
+
+export async function getWithdrawEventParameters(
+  proxy: ethers.Contract,
+  receipt: ethers.ContractTransactionReceipt
+): Promise<any[]> {
+  let r: any[] = [];
+  try {
+    // Define the event signature
+    const eventSignature = "event WithDraw(address l1token, address l1account, uint256 amount)";
+    const iface = new ethers.Interface([eventSignature]);
+
+    // Get the logs
+    const logs = receipt.logs; // Assuming you have the logs from the receipt
+    logs.forEach(log => {
+      // Decode the log
+      try {
+        const decoded = iface.parseLog(log);
+        if (decoded) {
+          const l1token = decoded.args.l1token;
+          const l1account = decoded.args.l1account;
+	  const amount = decoded.args.amount; //in Wei
+	  //console.log({ l1token, l1account, amount });
+          r.push({
+            token: l1token,
+            address: l1account,
+            amount: amount,
+          });
+        }
+      } catch (error) {
+        // Handle logs that don't match the event signature
+        console.error("Log does not match event signature:", error);
+      }
+    });
+
+  } catch (error) {
+    console.error('Error retrieving withdraw event parameters:', error);
+  }
+  return r;
+}
+
 
 async function trySettle() {
   let merkleRoot = await getMerkle();
@@ -112,10 +148,19 @@ async function trySettle() {
     let record = await modelBundle.findOne({ merkleRoot: merkleRoot});
     if (record) {
       let taskId = record.taskId;
-      let data0 = await getTaskWithTimeout(taskId, 20000);
+      let data0 = await getTaskWithTimeout(taskId, 60000);
 
+      //check failed or just timeout
       if (data0.proof.length == 0) {
-        throw new Error("proving not complete!");
+        let data1 = await getTask(taskId, null);
+	if (data1.status === "DryRunFailed" || data1.status === "Unprovable") {
+	   console.log("Crash(Need manual review): task failed with state:", taskId, data1.status, data1.input_context);
+	   while(1); //This is serious error, while loop to trigger manual review.
+	   return -1;
+	}  else {
+	  console.log(`Task: ${taskId}, ${data1.status}, retry settle later.`); //will restart settle
+	  return -1;
+	}
       }
       let shadowInstances = data0.shadow_instances;
       let batchInstances = data0.batch_instances;
@@ -132,7 +177,6 @@ async function trySettle() {
       console.log("txData.length:", txData.length);
 
       const proxy = new ethers.Contract(constants.proxyAddress, abiData.abi, signer);
-      let proxyInfo = await proxy.getProxyInfo();
 
       const tx = await proxy.verify(
         txData,
@@ -140,17 +184,49 @@ async function trySettle() {
         verifyInstancesArr,
         auxArr,
         [instArr],
-        [proxyInfo.rid.toString(), "1"]
       );
       // wait for tx to be mined, can add no. of confirmations as arg
       const receipt = await tx.wait();
       console.log("transaction:", tx.hash);
       console.log("receipt:", receipt);
+
+      const r = decodeWithdraw(txData);
+      const s = await getWithdrawEventParameters(proxy, receipt);
+      const withdrawArray = [];
+      let status = 'Done';
+      if (r.length !== s.length) {
+	  status = 'Fail';
+          console.error("Arrays have different lengths,",r,s);
+      } else {
+          for (let i = 0; i < r.length; i++) {
+              const rItem = r[i];
+              const sItem = s[i];
+              
+              if (rItem.address !== sItem.address || rItem.amount !== sItem.amount) {
+	          console.log("Crash(Need manual review):");
+                  console.error(`Mismatch found: ${rItem.address}:${rItem.amount} ${sItem.address}:${sItem.amount}`);
+		  while(1); //This is serious error, while loop to trigger manual review.
+		  status = 'Fail';
+		  break;
+	      } else {
+	      // Assuming rItem is defined and has address and amount
+	      record.withdrawArray.push({
+	         address: rItem.address,
+	         amount: rItem.amount,
+	      });
+	      }
+          }
+      }
+      //update record
+      record.settleTxHash = tx.hash;
+      record.settleStatus = status;
+      await record.save();
+      console.log("Receipt verified");
     } else {
       console.log(`proof bundle ${merkleRoot} not found`);
     }
   } catch(e) {
-    console.log("get bundle error");
+    console.log("Exception happen in trySettle()");
     console.log(e);
   }
 }
@@ -158,7 +234,11 @@ async function trySettle() {
 // start monitoring and settle
 async function main() {
  while (true) {
-     await trySettle();
+        try {
+            await trySettle();
+        } catch (error) {
+            console.error("Error during trySettle:", error);
+        }
      await new Promise(resolve => setTimeout(resolve, 60000));
  }
 }
