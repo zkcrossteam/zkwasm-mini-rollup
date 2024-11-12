@@ -180,8 +180,8 @@ export async function submitTx(txs: Array<TxWitness>, txdata: Uint8Array) {
 
     const helper = new ZKCNodeHelper(zkc_node_endpoint);
 
-    // let response = await helper.submitTx(get_image_md5(), [], priv_inputs, new Uint8Array());
-    let response = await helper.executeBatchDirect(get_image_md5(), [], priv_inputs, new Uint8Array());
+    let response = await helper.submitTx(get_image_md5(), [], priv_inputs, new Uint8Array());
+    //let response = await helper.executeBatchDirect(get_image_md5(), [], priv_inputs, new Uint8Array());
     console.log("response is ", response);
     return response;
 }
