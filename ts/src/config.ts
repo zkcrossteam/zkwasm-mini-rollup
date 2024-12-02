@@ -1,12 +1,40 @@
 import mongoose from 'mongoose';
-import {ZkWasmServiceHelper} from 'zkwasm-service-helper';
+import { ZkWasmServiceHelper } from 'zkwasm-service-helper';
+import { PrivateKey } from "delphinus-curves/src/altjubjub";
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-export const SERVER_PRI_KEY = "1234567";
 
 export const endpoint = "https://rpc.zkwasmhub.com:8090";
+
+export const get_server_admin_key = () => {
+  if (process.env.SERVER_ADMIN_KEY) {
+    return process.env.SERVER_ADMIN_KEY;
+  } else {
+    return "1234567"; // server admin private key
+  }
+}
+
+export const get_server_admin_pubkey = () => {
+  let prikey = PrivateKey.fromString(get_server_admin_key());
+  let pubkey = prikey.publicKey.key.x.v;
+  return pubkey
+}
+
+export const get_mongodb_uri = () => {
+  if (process.env.URI) {
+    return process.env.URI;
+  } else {
+    return "mongodb://localhost";
+  }
+}
+
+export const get_mongoose_db = () => {
+  let mongodbUri = get_mongodb_uri();
+  let imageMD5Prefix = get_image_md5();
+  return `${mongodbUri}/${imageMD5Prefix}_job-tracker`
+}
 
 export const get_service_port = () => {
   if (process.env.PORT) {
@@ -20,7 +48,7 @@ export const get_image_md5 = () => {
   if (process.env.IMAGE) {
     return process.env.IMAGE;
   } else {
-    return "77B332087A32A232314C309C5760DA44";
+    return "unspecified";
   }
 }
 
@@ -56,6 +84,23 @@ export const get_settle_private_account = () => {
   }
 }
 
+export const txSchema = new mongoose.Schema(
+    {
+      msg: {
+        type: String,
+        required: true,
+      },
+      pkx: {
+        type: String,
+        required: true,
+      },
+      sigx: {
+        type: String,
+        required: true,
+      }
+    }
+);
+
 export const jobSchema = new mongoose.Schema({
     jobId: {
           type: String,
@@ -83,6 +128,18 @@ export const bundleSchema = new mongoose.Schema({
           type: String,
           default: '',
     },
+    withdrawArray: [{
+          address: { type: String, default:'' },
+          amount: { type: BigInt, default:'' },
+    }],
+    settleStatus: {
+        type: String,
+        default: 'waiting',  // wait-for settle, settle failed, settle done
+    },
+    settleTxHash: {
+        type: String,
+        default: '',
+    },
 });
 
 export const randSchema = new mongoose.Schema({
@@ -96,6 +153,7 @@ export const randSchema = new mongoose.Schema({
 
 
 
+export const modelTx = mongoose.model('Tx', txSchema);
 export const modelJob = mongoose.model('Job', jobSchema);
 export const modelBundle = mongoose.model('Bundle', bundleSchema);
 export const modelRand = mongoose.model('Rand', randSchema);
