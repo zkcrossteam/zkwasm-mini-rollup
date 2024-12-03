@@ -15,7 +15,7 @@ import dotenv from 'dotenv';
 //import mongoose from 'mongoose';
 import {merkleRootToBeHexString} from "./lib.js";
 import {sha256} from "ethers";
-import {execute, queryState} from "./zkc_node";
+import {execute, queryState} from "./zkc_node.js";
 
 // Load environment variables from .env file
 dotenv.config();
@@ -450,3 +450,7 @@ async function handleReq(name: string, id: string, data: any) {
   }
   console.log("done");
 }
+
+let serv = new Service();
+await serv.initialize();
+await serv.serve();
