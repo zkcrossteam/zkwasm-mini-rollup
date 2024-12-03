@@ -1,29 +1,33 @@
 //import initHostBind, * as hostbind from "./wasmbind/hostbind.js";
 import initBootstrap, * as bootstrap from "./bootstrap/bootstrap.js";
 import initApplication, * as application from "./application/application.js";
-import { test_merkle_db_service } from "./test.js";
+//import { test_merkle_db_service } from "./test.js";
 import { verify_sign, LeHexBN, sign } from "./sign.js";
-import { Queue, Worker, Job } from 'bullmq';
-import IORedis from 'ioredis';
+//import { Queue, Worker, Job } from 'bullmq';
+//import IORedis from 'ioredis';
 import express from 'express';
-import { submitProofWithRetry, has_uncomplete_task, TxWitness, get_latest_proof } from "./prover.js";
+//import { submitProofWithRetry, has_uncomplete_task, TxWitness, get_latest_proof } from "./prover.js";
 import cors from "cors";
 import { get_mongoose_db, modelBundle, modelJob, modelRand, get_service_port, get_server_admin_key, modelTx } from "./config.js";
-import { getMerkleArray } from "./contract.js";
-import { ZkWasmUtil } from "zkwasm-service-helper";
+//import { getMerkleArray } from "./contract.js";
+//import { ZkWasmUtil } from "zkwasm-service-helper";
 import dotenv from 'dotenv';
-import mongoose from 'mongoose';
+//import mongoose from 'mongoose';
 import {merkleRootToBeHexString} from "./lib.js";
 import {sha256} from "ethers";
+import {execute, queryState} from "./zkc_node";
 
 // Load environment variables from .env file
 dotenv.config();
 
+/*
 let deploymode = false;
 let remote = false;
 let migrate = false;
 let redisHost = 'localhost';
+ */
 
+/*
 if (process.env.DEPLOY) {
   deploymode = true;
 }
@@ -39,15 +43,19 @@ if (process.env.MIGRATE) {
 if (process.env.REDISHOST) {
   redisHost = process.env.REDISHOST;
 }
+ */
 
+/*
 let taskid: string | null = null;
 
 if (process.env.TASKID) {
   taskid = process.env.TASKID;
 }
+ */
 
 /* Global Params */
 
+/*
 let transactions_witness = new Array();
 
 let merkle_root = new BigUint64Array([
@@ -58,7 +66,9 @@ let merkle_root = new BigUint64Array([
   ]);
 
 let snapshot = JSON.parse("{}");
+*/
 
+/*
 function randByte()  {
   return Math.floor(Math.random() * 0xff);
 }
@@ -81,8 +91,10 @@ async function generateRandomSeed() {
     process.exit(1)
   }
 }
+*/
 
 export class Service {
+  /*
   worker: null | Worker;
   queue: null | Queue;
   txCallback: (arg: TxWitness) => void;
@@ -144,8 +156,10 @@ export class Service {
     let current_merkle_root = application.query_root();
     console.log("last root:", current_merkle_root);
   }
+   */
 
   async initialize() {
+    /*
     await mongoose.connect(get_mongoose_db(), {
       //useNewUrlParser: true,
       //useUnifiedTopology: true,
@@ -177,20 +191,20 @@ export class Service {
       console.log("fatal: redis disconnected unexpected ...");
       process.exit(1);
     });
-
-
+     */
 
     // bootstrap the application
-    console.log(`bootstrapping ... (deploymode: ${deploymode}, remote: ${remote}, migrate: ${migrate})`);
+    // console.log(`bootstrapping ... (deploymode: ${deploymode}, remote: ${remote}, migrate: ${migrate})`);
     await (initBootstrap as any)();
     //console.log(bootstrap);
     console.log("loading wasm application ...");
     //console.log(application);
     await (initApplication as any)(bootstrap);
 
-    console.log("check merkel database connection ...");
-    test_merkle_db_service();
+    // console.log("check merkel database connection ...");
+    // test_merkle_db_service();
 
+    /*
     if (migrate) {
       if (remote) {throw Error("Can't migrate in remote mode");}
       merkle_root = await getMerkleArray();
@@ -239,19 +253,20 @@ export class Service {
     // update the merkle root variable
     merkle_root = application.query_root();
 
+     */
+
     // Automatically add a job to the queue every few seconds
     if (application.autotick()) {
       setInterval(async () => {
         try {
-          await myQueue.add('autoJob', {command:0});
+          await handleReq('autoJob', '', {command:0});
         } catch (error) {
           console.error('Error adding automatic job to the queue:', error);
-          process.exit(1);
         }
       }, 5000); // Change the interval as needed (e.g., 5000ms for every 5 seconds)
     }
 
-
+/*
     this.worker = new Worker('sequencer', async job => {
       if (job.name == 'autoJob') {
         console.log("handle auto", job.data);
@@ -313,6 +328,7 @@ export class Service {
         }
       }
     }, {connection});
+ */
   }
 
   async serve() {
@@ -342,10 +358,10 @@ export class Service {
           console.error('Invalid signature:');
           res.status(500).send('Invalid signature');
         } else {
-          const job = await this.queue!.add('transaction', { value });
+          await handleReq('transaction', '', {value});
           res.status(201).send({
             success: true,
-            jobid: job.id
+            jobid: '',
           });
         }
       } catch (error) {
@@ -366,15 +382,10 @@ export class Service {
         const pkx = new LeHexBN(value.pkx).toU64Array();
         let u64array = new BigUint64Array(4);
         u64array.set(pkx);
-        let jstr = application.get_state(pkx);
-        let player = JSON.parse(jstr);
-        let result = {
-          player: player,
-          state: snapshot
-        }
+        let jstr = queryState(pkx);
         res.status(201).send({
           success: true,
-          data: JSON.stringify(result),
+          data: jstr,
         });
 
       } catch (error) {
@@ -383,15 +394,8 @@ export class Service {
     });
 
     app.get('/job/:id', async (req, res) => {
-      try {
-        let jobId = req.params.id;
-        const job = await Job.fromId(this.queue!, jobId);
-        return res.status(201).json(job);
-      } catch (err) {
-        // job not tracked
-        console.log(err);
-        res.status(500).json({ message: (err as Error).toString()});
-      }
+      let jobId = req.params.id;
+      return res.status(201).json({});
     });
 
     app.post('/config', async (req, res) => {
@@ -432,4 +436,17 @@ function signature_to_u64array(value: any) {
   u64array.set(sigy, 16);
   u64array.set(sigr, 20);
   return u64array;
+}
+
+async function handleReq(name: string, id: string, data: any) {
+  if (name == 'autoJob') {
+    console.log("handle auto", data);
+    let signature = sign(new BigUint64Array([0n, 0n, 0n, 0n]), get_server_admin_key());
+    await execute(id, signature);
+  } else if (name == 'transaction') {
+    console.log("handle transaction ...");
+    let signature = data.value;
+    await execute(id, signature);
+  }
+  console.log("done");
 }
