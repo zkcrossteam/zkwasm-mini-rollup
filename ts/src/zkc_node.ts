@@ -37,7 +37,7 @@ export class ZKCNodeHelper {
                     return response.data?.result
                 } else {
                     const jsonError = response.data?.error;
-                    throw "queryStateServerError " + jsonError;
+                    throw "queryStateServerError " + jsonError.message;
                 }
             } else {
                 throw "queryStateError";
