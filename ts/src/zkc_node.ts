@@ -98,7 +98,12 @@ export async function execute(id: string, tx: TxWitness) {
 export async function queryState(key: BigUint64Array) {
     const helper = new ZKCNodeHelper(zkc_node_endpoint);
 
-    let response = await helper.queryState(key);
-    console.log("response is ", response);
+    try {
+        let response = await helper.queryState(key);
+        console.log("response is ", response);
+    } catch (error) {
+        console.error('queryState Error:', error);
+        throw "queryStateError " + error;
+    }
     return response;
 }
