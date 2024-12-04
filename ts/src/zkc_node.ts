@@ -101,9 +101,9 @@ export async function queryState(key: BigUint64Array) {
     try {
         let response = await helper.queryState(key);
         console.log("response is ", response);
+        return response;
     } catch (error) {
         console.error('queryState Error:', error);
         throw "queryStateError " + error;
     }
-    return response;
 }
