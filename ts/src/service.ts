@@ -382,12 +382,11 @@ export class Service {
         const pkx = new LeHexBN(value.pkx).toU64Array();
         let u64array = new BigUint64Array(4);
         u64array.set(pkx);
-        let jstr = queryState(pkx);
+        let jstr = await queryState(pkx);
         res.status(201).send({
           success: true,
           data: jstr,
         });
-
       } catch (error) {
         res.status(500).send('Get Status Error');
       }
