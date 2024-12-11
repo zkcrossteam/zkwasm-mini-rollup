@@ -9,6 +9,7 @@
     "@types/node-fetch": "^2.6.11",
     "@types/sha256": "^0.2.2",
     "@types/sync-fetch": "^0.4.3",
+    "@types/uuid": "^10.0.0",
     "bullmq": "^5.7.9",
     "cors": "^2.8.5",
     "delphinus-curves": "git+https://github.com/DelphinusLab/delphinus-curves.git#yyu/hybridPackage",
@@ -21,6 +22,7 @@
     "sync-fetch": "^0.5.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.5",
+    "uuid": "^9.0.1",
     "zkwasm-service-cli": "git+https://github.com/DelphinusLab/zkWasm-service-cli.git",
     "zkwasm-service-helper": "github:DelphinusLab/zkWasm-service-helper"
   },

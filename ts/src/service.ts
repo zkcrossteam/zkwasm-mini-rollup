@@ -16,6 +16,7 @@ import dotenv from 'dotenv';
 //import {merkleRootToBeHexString} from "./lib.js";
 //import {sha256} from "ethers";
 import {execute, queryState, queryJobStatus} from "./zkc_node.js";
+import { v4 as uuidv4 } from 'uuid';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -347,7 +348,7 @@ export class Service {
         return res.status(400).send('Value is required');
       }
 
-      const id = crypto.randomUUID();
+      const id = uuidv4();
 
       try {
         const msg = new LeHexBN(value.msg);
