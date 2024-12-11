@@ -14,8 +14,9 @@ import { get_mongoose_db, modelBundle, modelJob, modelRand, get_service_port, ge
 import dotenv from 'dotenv';
 //import mongoose from 'mongoose';
 import {merkleRootToBeHexString} from "./lib.js";
-import {sha256} from "ethers";
-import {execute, queryState} from "./zkc_node.js";
+import {id, sha256} from "ethers";
+import {execute, queryState, queryJobStatus} from "./zkc_node.js";
+import { v4 as uuidv4 } from 'uuid';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -347,6 +348,8 @@ export class Service {
         return res.status(400).send('Value is required');
       }
 
+      const id = uuidv4();
+
       try {
         const msg = new LeHexBN(value.msg);
         const pkx = new LeHexBN(value.pkx);
@@ -358,10 +361,10 @@ export class Service {
           console.error('Invalid signature:');
           res.status(500).send('Invalid signature');
         } else {
-          await handleReq('transaction', '', {value});
+          await handleReq('transaction', id, {value});
           res.status(201).send({
             success: true,
-            jobid: '',
+            jobid: id,
           });
         }
       } catch (error) {
@@ -394,7 +397,16 @@ export class Service {
 
     app.get('/job/:id', async (req, res) => {
       let jobId = req.params.id;
-      return res.status(201).json({});
+      if (!jobId) {
+        return res.status(400).send('id is required');
+      }
+
+      try {
+        const status = await queryJobStatus(jobId);
+        return res.status(200).send(status);
+      } catch (error) {
+        res.status(500).send('Get Job Status Error');
+      }
     });
 
     app.post('/config', async (req, res) => {

@@ -48,6 +48,35 @@ export class ZKCNodeHelper {
         }
     }
 
+    public async queryJobStatus(id: string): Promise<JSON> {
+        try {
+            const params = {
+                "id": id
+            }
+            const response = await this.instance.post(
+                "/",
+                {
+                    "jsonrpc": "2.0",
+                    "method": "query-job-status",
+                    "params": params
+                }
+            )
+            if (response.status === 200) {
+                if (response.data?.error === undefined) {
+                    return response.data?.result
+                } else {
+                    const jsonError = response.data?.error;
+                    throw "queryJobStatusServerError " + jsonError.message;
+                }
+            } else {
+                throw "queryJobStatusError";
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            throw "queryJobStatusError " + error;
+        }
+    }
+
     public async execute(id: string, params: Array<string>): Promise<JSON> {
         try {
             const p = {
@@ -105,5 +134,18 @@ export async function queryState(key: BigUint64Array) {
     } catch (error) {
         console.error('queryState Error:', error);
         throw "queryStateError " + error;
+    }
+}
+
+export async function queryJobStatus(id: string): Promise<JSON> {
+    const helper = new ZKCNodeHelper(zkc_node_endpoint);
+
+    try {
+        let response = await helper.queryJobStatus(id);
+        console.log("response is ", response);
+        return response;
+    } catch (error) {
+        console.error('queryJobStatus Error:', error);
+        throw "queryJobStatusError " + error;
     }
 }
