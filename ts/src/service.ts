@@ -461,7 +461,3 @@ async function handleReq(name: string, id: string, data: any) {
   }
   console.log("done");
 }
-
-let serv = new Service();
-await serv.initialize();
-await serv.serve();
